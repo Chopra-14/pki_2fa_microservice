@@ -4,10 +4,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.crypto_utils import load_private_key, decrypt_seed
 
 def main():
-    # Load private key
     private_key = load_private_key()
-
-    # Read encrypted seed from file
     with open("encrypted_seed.txt", "r", encoding="utf-8") as f:
         encrypted_seed = f.read().strip()
 
