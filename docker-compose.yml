@@ -15,15 +15,17 @@ services:
       - TZ=UTC
 
     volumes:
-  
+      # Persistent seed storage
       - seed-data:/data
-
+      # Cron output
       - cron-output:/cron
 
+      # Mount key files (read-only)
       - ./student_private.pem:/app/student_private.pem:ro
       - ./student_public.pem:/app/student_public.pem:ro
       - ./instructor_public.pem:/app/instructor_public.pem:ro
 
+      # Mount cron file
       - ./cron/2fa-cron:/app/cron/2fa-cron:ro
 
     restart: unless-stopped
