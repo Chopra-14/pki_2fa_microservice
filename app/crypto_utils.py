@@ -1,101 +1,77 @@
-import base64
-from pathlib import Path
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import hashes, serialization
+import json
+import pathlib
+import requests
 
 
-def load_private_key(path: str = "student_private.pem"):
-    """
-    Load RSA private key from PEM file.
-    """
-    key_path = Path(path)
-    if not key_path.exists():
-        raise FileNotFoundError(f"{path} not found in project root")
+API_URL = "https://eajeyq4r3zljoq4rpovy2nthda0vtjqf.lambda-url.ap-south-1.on.aws"
 
-    private_key = serialization.load_pem_private_key(
-        key_path.read_bytes(),
-        password=None
-    )
-    return private_key
+STUDENT_ID = "23A91A6127"  
+GITHUB_REPO_URL = "https://github.com/Chopra-14/pki-2fa-microservice"
 
-def decrypt_seed(encrypted_seed_b64: str, private_key) -> str:
+
+def request_seed(student_id: str, github_repo_url: str, api_url: str = API_URL):
     """
-    Decrypt base64-encoded encrypted seed using RSA/OAEP (SHA-256).
+    Request encrypted seed from instructor API and save to encrypted_seed.txt
     """
+    public_key_path = pathlib.Path("student_public.pem")
+
+    if not public_key_path.exists():
+        raise FileNotFoundError("student_public.pem not found in project root")
+
+    public_key_pem = public_key_path.read_text(encoding="utf-8")
+
+
+    public_key_single_line = public_key_pem
+
+ 
+    payload = {
+        "student_id": student_id,
+        "github_repo_url": github_repo_url,
+        "public_key": public_key_single_line,
+    }
+
+    print("➡ Sending request to instructor API...")
+
 
     try:
-        encrypted_bytes = base64.b64decode(encrypted_seed_b64)
-    except Exception:
-        raise ValueError("Invalid base64 encrypted seed")
-
-    try:
-        decrypted_bytes = private_key.decrypt(
-            encrypted_bytes,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
+        response = requests.post(
+            api_url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=15,
         )
-    except Exception as e:
-        raise ValueError(f"Seed decryption failed: {e}")
+    except requests.RequestException as e:
+        raise SystemError(f"Failed to call instructor API: {e}")
+
 
     try:
-        hex_seed = decrypted_bytes.decode("utf-8").strip()
-    except Exception:
-        raise ValueError("Decrypted seed is not valid UTF-8")
+        data = response.json()
+    except json.JSONDecodeError:
+        raise ValueError(f"Non-JSON response from API: {response.text}")
 
-    if len(hex_seed) != 64:
-        raise ValueError("Decrypted seed must be 64 characters long")
+  
+    if response.status_code != 200 or data.get("status") != "success":
+        raise RuntimeError(f"API error: {data}")
 
-    allowed = "0123456789abcdef"
-    if any(c not in allowed for c in hex_seed.lower()):
-        raise ValueError("Decrypted seed contains invalid characters (not hex)")
+    encrypted_seed = data.get("encrypted_seed")
+    if not encrypted_seed:
+        raise ValueError("API response missing 'encrypted_seed'")
+    out_path = pathlib.Path("encrypted_seed.txt")
+    out_path.write_text(encrypted_seed.strip(), encoding="utf-8")
 
-    return hex_seed
+    print("✅ Encrypted seed saved to encrypted_seed.txt")
+    return encrypted_seed
 
-def load_public_key(path: str = "instructor_public.pem"):
-    """
-    Load RSA public key from PEM file.
-    """
-    key_path = Path(path)
-    if not key_path.exists():
-        raise FileNotFoundError(f"{path} not found in project root")
 
-    public_key = serialization.load_pem_public_key(key_path.read_bytes())
-    return public_key
+def main():
+    if STUDENT_ID == "YOUR_STUDENT_ID_HERE":
+        raise ValueError("Please edit scripts/request_seed.py and set STUDENT_ID first.")
 
-def sign_message(message: str, private_key) -> bytes:
-    """
-    Sign a message using RSA-PSS with SHA-256.
+    print(f"Using student_id={STUDENT_ID}")
+    print(f"Using github_repo_url={GITHUB_REPO_URL}")
 
-    - Message is ASCII/UTF-8 string (NOT hex bytes!)
-    - Padding: PSS, MGF1(SHA-256)
-    - Salt length: MAX_LENGTH
-    """
-    message_bytes = message.encode("utf-8")
+    request_seed(STUDENT_ID, GITHUB_REPO_URL)
 
-    signature = private_key.sign(
-        message_bytes,
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH,
-        ),
-        hashes.SHA256(),
-    )
 
-    return signature
-
-def encrypt_with_public_key(data: bytes, public_key) -> bytes:
-    """
-    Encrypt data using RSA-OAEP with SHA-256.
-    """
-    ciphertext = public_key.encrypt(
-        data,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return ciphertext
+if _name_ == "_main_":
+    main()
